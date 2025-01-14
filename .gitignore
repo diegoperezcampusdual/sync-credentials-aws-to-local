@@ -1,0 +1,24 @@
+# Ignorar archivos y directorios específicos
+.DS_Store
+node_modules/
+playwright*
+.aws-credentials
+dist/
+*.log
+package-lock.json
+
+# Ignorar archivos de configuración del entorno
+.env
+config.js
+
+# Ignorar archivos específicos de IDEs/editores
+.vscode/
+.idea/
+
+# Ignorar archivos de compilación
+*.class
+*.exe
+*.dll
+
+# Ignorar carpetas de sistemas operativos
+Thumbs.db
