@@ -6,7 +6,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import Playwright, sync_playwright
 
-def set_aws_credentials_system_wide(file_path=".aws-credentials"):
+# Variables
+AWS_CREDENTIALS_FILE_PATH = ".aws-credentials"
+WSL_LINUX_PATH = "RouteTouAWSCredentialsFileInWSL"
+PROFILE_NAME = "[YourProfileName]"
+AWS_URL = "https://d-8067060d87.awsapps.com/start/#/?tab=accounts"
+COOKIES_ACCEPT_SELECTOR = "[data-id='awsccc-cb-btn-accept']"
+SESSION_VALID_SELECTOR = "[data-testid='account-list-cell']"
+LOGIN_PLACEHOLDER_EMAIL = "Correo electrónico, teléfono"
+LOGIN_BUTTON_NEXT = "Siguiente"
+LOGIN_PLACEHOLDER_PASSWORD = "Contraseña"
+LOGIN_BUTTON_SIGNIN = "Iniciar sesión"
+LOGIN_BUTTON_YES = "Sí"
+CREDENTIALS_SELECTOR_PREFIX = "text=export"
+STATE_FILE_NAME = "playwright_state.json"
+
+def set_aws_credentials_system_wide(file_path=AWS_CREDENTIALS_FILE_PATH):
     """
     Carga las credenciales de AWS desde un archivo y las establece como variables de entorno.
     """
@@ -55,13 +70,13 @@ def run(playwright: Playwright):
         print("Error: MICROSOFT_EMAIL y/o MICROSOFT_PASSWORD no están definidas en el archivo .env.")
         return
 
-    state_path = script_dir / "playwright_state.json"
+    state_path = script_dir / STATE_FILE_NAME
     browser = playwright.chromium.launch(headless=True)
     context = (browser.new_context(storage_state=state_path)
                if state_path.exists() else browser.new_context())
 
     page = context.new_page()
-    page.goto("https://d-8067060d87.awsapps.com/start/#/?tab=accounts")
+    page.goto(AWS_URL)
 
     handle_cookies_modal(page)
 
@@ -73,7 +88,7 @@ def run(playwright: Playwright):
 
     if credentials:
         save_credentials(credentials)
-        set_aws_credentials_system_wide(".aws-credentials")
+        set_aws_credentials_system_wide(AWS_CREDENTIALS_FILE_PATH)
 
     context.close()
     browser.close()
@@ -81,7 +96,7 @@ def run(playwright: Playwright):
 def handle_cookies_modal(page):
     """Maneja el modal de cookies si aparece."""
     try:
-        page.locator("[data-id='awsccc-cb-btn-accept']").click(timeout=5000)
+        page.locator(COOKIES_ACCEPT_SELECTOR).click(timeout=5000)
         print("Cookies aceptadas.")
     except:
         print("No se mostró el modal de cookies.")
@@ -89,7 +104,7 @@ def handle_cookies_modal(page):
 def validate_session(page):
     """Valida si la sesión es válida."""
     try:
-        page.wait_for_selector("[data-testid='account-list-cell']", timeout=15000)
+        page.wait_for_selector(SESSION_VALID_SELECTOR, timeout=15000)
         print("Sesión válida.")
         return True
     except:
@@ -98,17 +113,17 @@ def validate_session(page):
 
 def perform_login(page, email, password, state_path):
     """Realiza el inicio de sesión en Microsoft."""
-    page.get_by_placeholder("Correo electrónico, teléfono").fill(email)
-    page.get_by_role("button", name="Siguiente").click()
-    page.get_by_placeholder("Contraseña").fill(password)
-    page.get_by_role("button", name="Iniciar sesión").click()
+    page.get_by_placeholder(LOGIN_PLACEHOLDER_EMAIL).fill(email)
+    page.get_by_role("button", name=LOGIN_BUTTON_NEXT).click()
+    page.get_by_placeholder(LOGIN_PLACEHOLDER_PASSWORD).fill(password)
+    page.get_by_role("button", name=LOGIN_BUTTON_SIGNIN).click()
 
     try:
         page.get_by_text("No volver a mostrar").click()
     except:
         pass
 
-    page.get_by_role("button", name="Sí").click()
+    page.get_by_role("button", name=LOGIN_BUTTON_YES).click()
     context = page.context
     context.storage_state(path=str(state_path))
     print("Sesión guardada.")
@@ -116,9 +131,9 @@ def perform_login(page, email, password, state_path):
 def navigate_to_credentials(page):
     """Navega hasta la sección de credenciales."""
     try:
-        page.locator("[data-testid='account-list-cell']").click()
+        page.locator(SESSION_VALID_SELECTOR).click()
         page.locator("[data-testid='role-creation-action-button']").click()
-        page.wait_for_selector("text=export AWS_ACCESS_KEY_ID", timeout=30000)
+        page.wait_for_selector(f"{CREDENTIALS_SELECTOR_PREFIX} AWS_ACCESS_KEY_ID", timeout=30000)
         print("Navegación a credenciales completada.")
     except Exception as e:
         print(f"Error al navegar a las credenciales: {e}")
@@ -129,7 +144,7 @@ def extract_credentials(page):
     try:
         credentials = {}
         for key in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
-            selector = f"text=export {key}"
+            selector = f"{CREDENTIALS_SELECTOR_PREFIX} {key}"
             element_text = page.locator(selector).inner_text()
             match = re.search(fr'export {key}="([^"]+)"', element_text)
             credentials[key.lower()] = match.group(1) if match else ""
@@ -150,7 +165,7 @@ def convert_linux_to_windows_path(linux_path):
         print(f"Error al convertir la ruta de Linux a Windows: {e}")
         return None
 
-def save_credentials(credentials, file_path=".aws-credentials", wsl_linux_path="/home/bootcamp/.aws/credentials"):
+def save_credentials(credentials, file_path=AWS_CREDENTIALS_FILE_PATH, wsl_linux_path=WSL_LINUX_PATH):
     """
     Guarda las credenciales en archivos específicos y conserva el perfil existente.
     """
@@ -173,7 +188,7 @@ def save_credentials(credentials, file_path=".aws-credentials", wsl_linux_path="
             with open(wsl_windows_path, "w") as f:
                 in_profile_section = False
                 for line in lines:
-                    if line.strip() == "[DiegoPerez-Profile]":
+                    if line.strip() == PROFILE_NAME:
                         in_profile_section = True
                         f.write(line)
                         continue
